@@ -2,7 +2,7 @@
 
 This is a GitHub profile. There's content here. 
 
-![Some Visuals](https://via.placeholder.com/850x280.png?text=An+Image)
+![Some Visuals](https://via.placeholder.com/850x280.png?text=GitHub+Profile+Image)
 
 ## Overview
 
@@ -27,3 +27,5 @@ Connections can be made through appropriate channels.
 ---
 
 Thank you for visiting.
+
+None of this has been written by an AI. All human-made. Thank you.
