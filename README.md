@@ -2,7 +2,7 @@
 
 This is a GitHub profile. There's content here. 
 
-![Some Visuals](https://via.placeholder.com/850x280.png?text=GitHub+Profile+Image)
+![Some Visuals](https://github-readme-stats.vercel.app/api?username=jckr&show_icons=true&hide_title=true&count_private=true&hide_rank=true&hide_border=true)
 
 ## Overview
 
