@@ -19,10 +19,7 @@ jobs:
           node-version: '20'
 
       - name: Run script
-        run: | 
-          echo "PWD is $PWD"
-          ls -l
-          node ./update-readme.js
+        run: node ./update.js
 
       - name: Commit changes
         run: |
