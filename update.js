@@ -10,7 +10,7 @@ const getData = (input) => {
 }
 
 const getCells = (data) => {
-    const rows = data.trim().split('\n').map(row => row.replace(/`/g, '').replace(/<br>/g, ''));
+    const rows = data.trim().split('\n').map(row => row.replace(/`/g, '').replace(/<\/br>/g, ''));
     const cells = rows.map(row => row.split('').map(cell => cell === '*'));
     return cells;
 }
