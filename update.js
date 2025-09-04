@@ -41,7 +41,7 @@ const computeNextGeneration = (data) => {
 }
 
 const render = (updatedData, existingData) => {
-    return `\n${data.map((_, y) => `${BACK_QUOTE}${row.map((_, x) => renderCell(updatedData[y][x], existingData[y][x])).join('')}${BACK_QUOTE}</br>`).join(`\n`)}\n`;
+    return `\n${updatedData.map((row, y) => `${BACK_QUOTE}${row.map((_, x) => renderCell(updatedData[y][x], existingData[y][x])).join('')}${BACK_QUOTE}</br>`).join(`\n`)}\n`;
 }
 const renderCell = (updatedCell, existingCell) => {
     if (updatedCell) {
