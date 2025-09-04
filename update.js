@@ -2,6 +2,12 @@ const fs = require("fs");
 const startTag = "<!-- GOL_START -->";
 const endTag = "<!-- GOL_END -->";
 const BACK_QUOTE = "`";
+
+const MISSING = ' ';
+const APPEARED = '▣';
+const PERSISTED = '■';
+const DISAPPEARED = '▢';
+
 const getData = (input) => {    
     const startIdx = input.indexOf(startTag) + startTag.length;
     const endIdx = input.indexOf(endTag);
@@ -9,9 +15,11 @@ const getData = (input) => {
     return data;
 }
 
+
+
 const getCells = (data) => {
     const rows = data.trim().split('\n').map(row => row.replace(/`/g, '').replace(/<\/br>/g, ''));
-    const cells = rows.map(row => row.split('').map(cell => cell === '*' || cell === '+'));
+    const cells = rows.map(row => row.split('').map(cell => cell === APPEARED || cell === PERSISTED));
     return cells;
 }
 
@@ -46,14 +54,14 @@ const render = (updatedData, existingData) => {
 const renderCell = (updatedCell, existingCell) => {
     if (updatedCell) {
         if (existingCell) {
-            return '*';
+            return PERSISTED;
         }
-        return '+';
+        return APPEARED;
     }
     if (existingCell) {
-        return 'x';
+        return DISAPPEARED;
     }
-    return '.';
+    return MISSING;
 }
 
 const updateGOL = (input) => {
