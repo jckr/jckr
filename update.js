@@ -3,10 +3,10 @@ const startTag = "<!-- GOL_START -->";
 const endTag = "<!-- GOL_END -->";
 const BACK_QUOTE = "`";
 
-const MISSING = ' ';
-const APPEARED = '▣';
-const PERSISTED = '■';
-const DISAPPEARED = '▢';
+const MISSING = '·';
+const APPEARED = '✚';
+const PERSISTED = '✱';
+const DISAPPEARED = '×';
 
 const getData = (input) => {    
     const startIdx = input.indexOf(startTag) + startTag.length;
