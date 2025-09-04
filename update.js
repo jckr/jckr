@@ -11,7 +11,7 @@ const getData = (input) => {
 
 const getCells = (data) => {
     const rows = data.trim().split('\n').map(row => row.replace(/`/g, '').replace(/<\/br>/g, ''));
-    const cells = rows.map(row => row.split('').map(cell => cell === '*'));
+    const cells = rows.map(row => row.split('').map(cell => cell === '*' || cell === '+'));
     return cells;
 }
 
@@ -40,15 +40,27 @@ const computeNextGeneration = (data) => {
     }));
 }
 
-const render = (data) => {
-    return `\n${data.map(row => `${BACK_QUOTE}${row.map(cell => cell ? '*' : '.').join('')}${BACK_QUOTE}</br>`).join(`\n`)}\n`;
+const render = (updatedData, existingData) => {
+    return `\n${data.map((_, y) => `${BACK_QUOTE}${row.map((_, x) => renderCell(updatedData[y][x], existingData[y][x])).join('')}${BACK_QUOTE}</br>`).join(`\n`)}\n`;
+}
+const renderCell = (updatedCell, existingCell) => {
+    if (updatedCell) {
+        if (existingCell) {
+            return '*';
+        }
+        return '+';
+    }
+    if (existingCell) {
+        return 'x';
+    }
+    return '.';
 }
 
 const updateGOL = (input) => {
     const data = getData(input);
-    const cells = getCells(data);
-    const updatedData = computeNextGeneration(cells);
-    const rendered = render(updatedData);
+    const existingData = getCells(data);
+    const updatedData = computeNextGeneration(existingData);
+    const rendered = render(updatedData, existingData);
     return [data, rendered];
 }
 
