@@ -1,10 +1,11 @@
 const fs = require("fs");
+const { createCanvas } = require("@napi-rs/canvas");
 
 const COLS = 40;
 const ROWS = 40;
-const CELL_SIZE = 6;
+const CELL_SIZE = 30;
 const STATE_FILE = "state.json";
-const SVG_FILE = "game.svg";
+const PNG_FILE = "game.png";
 const README_FILE = "README.md";
 
 const RESEED_THRESHOLD = 80; // 5% of 1600 cells
@@ -126,14 +127,11 @@ function generateColors(rng) {
 function generateShapeParams(rng) {
   const params = {};
 
-  // Polygons: triangle(3), quad(4), pentagon(5), hex(6), heptagon(7), octagon(8)
-  // Larger distortion for fewer sides (triangles/quads look more interesting when irregular)
   for (let sides = 3; sides <= 8; sides++) {
     const vertices = [];
     const baseRotation = rng() * 2 * Math.PI;
-    // More distortion for fewer sides: tri/quad get ±25°, higher polygons get ±15°
     const maxAngleJitter = sides <= 4 ? (Math.PI / 7.2) : (Math.PI / 12);
-    const radiusRange = sides <= 4 ? 0.5 : 0.35; // 0.65-1.35 vs 0.75-1.1
+    const radiusRange = sides <= 4 ? 0.5 : 0.35;
     const radiusBase = sides <= 4 ? 0.65 : 0.825;
     for (let i = 0; i < sides; i++) {
       vertices.push({
@@ -144,17 +142,14 @@ function generateShapeParams(rng) {
     params[`polygon_${sides}`] = { baseRotation, vertices };
   }
 
-  // Lines (neighborCount === 2)
   params.line = {
     rotation: rng() * Math.PI,
     lengthMultiplier: 0.6 + rng() * 0.4,
   };
 
-  // Dots/circles (neighborCount === 0 and 1) -> ellipses
   for (const key of ["dot_0", "dot_1"]) {
     const rxMul = 0.7 + rng() * 0.6;
     let ryMul = 0.7 + rng() * 0.6;
-    // Constrain so neither axis is <0.5x or >1.5x the other
     const ratio = rxMul / ryMul;
     if (ratio < 0.5) ryMul = rxMul / 0.5;
     else if (ratio > 1.5) ryMul = rxMul / 1.5;
@@ -182,16 +177,12 @@ function createSeed(seed) {
     }
   }
 
-  // Methuselahs in different quadrants
   placePattern(PATTERNS.rpentomino, 10, 10);
   placePattern(PATTERNS.acorn, 30, 30);
   placePattern(PATTERNS.rabbits, 10, 30);
   placePattern(PATTERNS.rpentomino, 30, 10);
-
-  // Glider gun
   placePattern(PATTERNS.gliderGun, 2, 2);
 
-  // Sprinkle ~25% random cells for immediate density
   const targetDensity = 0.25;
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
@@ -201,7 +192,6 @@ function createSeed(seed) {
     }
   }
 
-  // Set history for initial alive cells
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       if (grid[y][x]) history[y][x] = 1;
@@ -265,51 +255,68 @@ function popcount(n) {
   return count;
 }
 
-// --- SVG Generation ---
+// --- Canvas rendering ---
 
-function distortedPolygonPoints(cx, cy, r, sides, shapeParam) {
-  const points = [];
+// Returns array of [x, y] vertex coordinates for a distorted polygon
+function polygonVertices(cx, cy, r, sides, shapeParam) {
+  const pts = [];
   for (let i = 0; i < sides; i++) {
     const baseAngle = shapeParam.baseRotation + (2 * Math.PI * i) / sides;
     const v = shapeParam.vertices[i];
     const angle = baseAngle + v.angleOffset;
     const vr = r * v.radiusMultiplier;
-    points.push(
-      `${(cx + vr * Math.cos(angle)).toFixed(2)},${(cy + vr * Math.sin(angle)).toFixed(2)}`
-    );
+    pts.push([cx + vr * Math.cos(angle), cy + vr * Math.sin(angle)]);
   }
-  return points.join(" ");
+  return pts;
 }
 
-function generateSymbol(x, y, neighborCount, neighborPositions, status, colors, shapeParams) {
-  const cx = x * CELL_SIZE + CELL_SIZE / 2;
-  const cy = y * CELL_SIZE + CELL_SIZE / 2;
-  const r = CELL_SIZE * 0.35;
+function drawSymbol(ctx, x, y, neighborCount, neighborPositions, status, colors, shapeParams) {
+  const CS = CELL_SIZE;
+  const cx = x * CS + CS / 2;
+  const cy = y * CS + CS / 2;
+  const r = CS * 0.35;
 
   let color;
   if (status === "surviving") color = colors.symbolColor;
   else if (status === "dying") color = colors.symbolColorDying;
   else color = colors.symbolColorAppearing;
 
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+
   switch (neighborCount) {
     case 0: {
       const p = shapeParams.dot_0;
-      const rx = (r * 0.5 * p.rxMultiplier).toFixed(2);
-      const ry = (r * 0.5 * p.ryMultiplier).toFixed(2);
-      return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${color}" transform="rotate(${p.rotation.toFixed(1)}, ${cx}, ${cy})"/>`;
+      const rx = r * 0.5 * p.rxMultiplier;
+      const ry = r * 0.5 * p.ryMultiplier;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(p.rotation * Math.PI / 180);
+      ctx.scale(rx, ry);
+      ctx.beginPath();
+      ctx.arc(0, 0, 1, 0, 2 * Math.PI);
+      ctx.restore();
+      ctx.fill();
+      break;
     }
 
     case 1: {
       const [dx, dy] = neighborPositions[0];
       const len = Math.sqrt(dx * dx + dy * dy);
-      const offsetX = (dx / len) * r * 0.6;
-      const offsetY = (dy / len) * r * 0.6;
-      const ecx = cx + offsetX;
-      const ecy = cy + offsetY;
+      const ecx = cx + (dx / len) * r * 0.6;
+      const ecy = cy + (dy / len) * r * 0.6;
       const p = shapeParams.dot_1;
-      const rx = (r * 0.45 * p.rxMultiplier).toFixed(2);
-      const ry = (r * 0.45 * p.ryMultiplier).toFixed(2);
-      return `<ellipse cx="${ecx.toFixed(2)}" cy="${ecy.toFixed(2)}" rx="${rx}" ry="${ry}" fill="${color}" transform="rotate(${p.rotation.toFixed(1)}, ${ecx.toFixed(2)}, ${ecy.toFixed(2)})"/>`;
+      const rx = r * 0.45 * p.rxMultiplier;
+      const ry = r * 0.45 * p.ryMultiplier;
+      ctx.save();
+      ctx.translate(ecx, ecy);
+      ctx.rotate(p.rotation * Math.PI / 180);
+      ctx.scale(rx, ry);
+      ctx.beginPath();
+      ctx.arc(0, 0, 1, 0, 2 * Math.PI);
+      ctx.restore();
+      ctx.fill();
+      break;
     }
 
     case 2: {
@@ -317,21 +324,40 @@ function generateSymbol(x, y, neighborCount, neighborPositions, status, colors, 
       const halfLen = r * 0.85 * p.lengthMultiplier;
       const cos = Math.cos(p.rotation);
       const sin = Math.sin(p.rotation);
-      return `<line x1="${(cx - halfLen * cos).toFixed(2)}" y1="${(cy - halfLen * sin).toFixed(2)}" x2="${(cx + halfLen * cos).toFixed(2)}" y2="${(cy + halfLen * sin).toFixed(2)}" stroke="${color}" stroke-width="1.2"/>`;
+      ctx.lineWidth = 1.2 * (CS / 6);
+      ctx.beginPath();
+      ctx.moveTo(cx - halfLen * cos, cy - halfLen * sin);
+      ctx.lineTo(cx + halfLen * cos, cy + halfLen * sin);
+      ctx.stroke();
+      break;
     }
 
     case 3: {
       const triCy = cy + r * 0.25;
       const sp = shapeParams.polygon_3;
+      const pts = polygonVertices(cx, triCy, status === "appearing" ? r * 0.85 : r, 3, sp);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
       if (status === "appearing") {
-        return `<polygon points="${distortedPolygonPoints(cx, triCy, r * 0.85, 3, sp)}" fill="none" stroke="${color}" stroke-width="0.4"/>`;
+        ctx.lineWidth = 0.4 * (CS / 6);
+        ctx.stroke();
+      } else {
+        ctx.fill();
       }
-      return `<polygon points="${distortedPolygonPoints(cx, triCy, r, 3, sp)}" fill="${color}"/>`;
+      break;
     }
 
     case 4: {
       const sp = shapeParams.polygon_4;
-      return `<polygon points="${distortedPolygonPoints(cx, cy, r * 0.95, 4, sp)}" fill="${color}"/>`;
+      const pts = polygonVertices(cx, cy, r * 0.95, 4, sp);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      ctx.fill();
+      break;
     }
 
     case 5:
@@ -339,30 +365,33 @@ function generateSymbol(x, y, neighborCount, neighborPositions, status, colors, 
     case 7:
     case 8: {
       const sp = shapeParams[`polygon_${neighborCount}`];
-      return `<polygon points="${distortedPolygonPoints(cx, cy, r, neighborCount, sp)}" fill="${color}"/>`;
+      const pts = polygonVertices(cx, cy, r, neighborCount, sp);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      ctx.fill();
+      break;
     }
-
-    default:
-      return "";
   }
 }
 
-function generateSVG(grid, newGrid, history, colors, shapeParams) {
+function generatePNG(grid, newGrid, history, colors, shapeParams) {
   const width = COLS * CELL_SIZE;
   const height = ROWS * CELL_SIZE;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 ${width} ${height}" shape-rendering="crispEdges">\n`;
-
-  // Background rects
+  // Background pass
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       const pc = popcount(history[y][x]);
-      const color = colors.bgColors[pc];
-      svg += `<rect x="${x * CELL_SIZE}" y="${y * CELL_SIZE}" width="${CELL_SIZE}" height="${CELL_SIZE}" fill="${color}"/>\n`;
+      ctx.fillStyle = colors.bgColors[pc];
+      ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
     }
   }
 
-  // Symbols
+  // Symbol pass
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       const alive = newGrid[y][x];
@@ -379,13 +408,12 @@ function generateSVG(grid, newGrid, history, colors, shapeParams) {
       }
 
       if (status) {
-        svg += generateSymbol(x, y, neighborCount, neighborPositions, status, colors, shapeParams) + "\n";
+        drawSymbol(ctx, x, y, neighborCount, neighborPositions, status, colors, shapeParams);
       }
     }
   }
 
-  svg += `</svg>`;
-  return svg;
+  return canvas.toBuffer("image/png");
 }
 
 // --- README update ---
@@ -402,12 +430,10 @@ function formatDate(date) {
 
 function updateReadme(iteration, seed) {
   const now = formatDate(new Date());
-
-  const newContent = `<img src="game.svg" width="100%">
+  const newContent = `<img src="game.png" width="100%">
 
 <code>#${iteration} ${seed} ${now}</code>
 `;
-
   fs.writeFileSync(README_FILE, newContent);
 }
 
@@ -444,8 +470,8 @@ function main() {
     console.log(`Creating seed state (seed: ${seed})...`);
     state = warmUp(createSeed(seed));
     fs.writeFileSync(STATE_FILE, JSON.stringify(state));
-    const svg = generateSVG(state.grid, state.grid, state.history, state.colors, state.shapeParams);
-    fs.writeFileSync(SVG_FILE, svg);
+    const png = generatePNG(state.grid, state.grid, state.history, state.colors, state.shapeParams);
+    fs.writeFileSync(PNG_FILE, png);
     updateReadme(state.iteration, state.seed);
     console.log(`Seed created. Iteration: ${state.iteration}`);
     return;
@@ -461,8 +487,8 @@ function main() {
     console.log(`Alive cells (${aliveCount}) below threshold (${RESEED_THRESHOLD}). Re-seeding (seed: ${seed})...`);
     state = warmUp(createSeed(seed));
     fs.writeFileSync(STATE_FILE, JSON.stringify(state));
-    const svg = generateSVG(state.grid, state.grid, state.history, state.colors, state.shapeParams);
-    fs.writeFileSync(SVG_FILE, svg);
+    const png = generatePNG(state.grid, state.grid, state.history, state.colors, state.shapeParams);
+    fs.writeFileSync(PNG_FILE, png);
     updateReadme(state.iteration, state.seed);
     return;
   }
@@ -470,8 +496,8 @@ function main() {
   const newHistory = updateHistory(state.history, newGrid);
   const newIteration = state.iteration + 1;
 
-  const svg = generateSVG(oldGrid, newGrid, newHistory, state.colors, state.shapeParams);
-  fs.writeFileSync(SVG_FILE, svg);
+  const png = generatePNG(oldGrid, newGrid, newHistory, state.colors, state.shapeParams);
+  fs.writeFileSync(PNG_FILE, png);
 
   const newState = {
     iteration: newIteration,
