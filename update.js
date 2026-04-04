@@ -486,6 +486,7 @@ function updateReadme(iteration, seed) {
   const newContent = `<img src="game.png" width="100%">
 
 <code>#${iteration} ${seed} ${now}</code>
+[About](about.md)
 `;
   fs.writeFileSync(README_FILE, newContent);
 }
