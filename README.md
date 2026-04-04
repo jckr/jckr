@@ -1,3 +1,5 @@
 <img src="game.png" width="100%">
 
-<code>#9 1775259013596 04-03-2026 4:30pm</code>
+<code>#10 1775278701462 04-03-2026 10:03pm</code>
+
+[How this works](about.md)
